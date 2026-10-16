@@ -170,6 +170,37 @@ jobs:
       - name: Restore the image build cache
         uses: ./shellhub/.github/actions/build-cache
 
+      - name: Measure the image builds
+        working-directory: shellhub
+        env:
+          SHELLHUB_E2E_RUN: measure
+          SHELLHUB_CLOUD_SRC: ${{ github.workspace }}/cloud
+        run: |
+          stack="--env-file .env --env-file versions.env -f docker-compose.yml"
+          test="-f docker-compose.test.yml -f docker-compose.postgres.test.yml -f docker-compose.test.build.yml"
+          start=$(date +%s)
+          build() {
+              name=$1 edition=$2 service=$3
+              shift 3
+              SHELLHUB_BUILD_EDITION=$edition docker compose -p "measure-$name" $stack "$@" $test \
+                  build --progress plain "$service" > "$RUNNER_TEMP/measure-$name.log" 2>&1
+              status=$?
+              echo "$name finished at $(( $(date +%s) - start ))s, exit $status"
+          }
+          build ui community ui &
+          build gateway community gateway &
+          build server-community community server &
+          build server-enterprise enterprise server -f docker-compose.enterprise.yml &
+          wait
+          echo "total $(( $(date +%s) - start ))s"
+          for name in ui gateway server-community server-enterprise; do
+              echo "::group::$name steps over 1s"
+              awk '/^#[0-9]+ \[/ { id = $1; sub(/^#[0-9]+ /, ""); n[id] = substr($0, 1, 110) }
+                   /^#[0-9]+ DONE/ { t = $3; sub(/s$/, "", t); if (t + 0 >= 1) printf "%7.1fs %s\n", t, n[$1] }' \
+                  "$RUNNER_TEMP/measure-$name.log" | sort -rn
+              echo "::endgroup::"
+          done
+
       - name: Run E2E tests
         working-directory: shellhub/ui
         timeout-minutes: 60
