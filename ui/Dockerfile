@@ -54,7 +54,8 @@ COPY ui/. .
 COPY --from=spec-bundler /spec/openapi.json ./apps/console/openapi.json
 
 RUN OPENAPI_SPEC_PATH=./openapi.json npm run generate -w @shellhub/console
-RUN npm run build -w @shellhub/console
+RUN cd apps/console && npx tsc -b
+RUN cd apps/console && npx vite build
 
 RUN apk add --no-cache brotli gzip && \
     find apps/console/dist -type f -size +1024c \
